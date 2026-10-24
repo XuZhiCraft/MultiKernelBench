@@ -29,3 +29,8 @@ op_engineer_dir = f'{project_root_path}/ascend_op_projects'
 deploy_path = f'{op_engineer_dir}/opp'
 ascendc_device = 'ai_core-Ascend910B2'  # used for msopgen and hardware reporting
 ascendc_npu_arch = 'dav-2201'  # used for direct launch <<<>>> kernel compilation
+
+# OmniKernel direct-launch overrides; defaults preserve standalone upstream use.
+ascendc_soc_version = 'Ascend910B2'
+ascendc_build_jobs = max(1, min(os.cpu_count() or 1, 8))
+ascendc_build_type = 'Release'

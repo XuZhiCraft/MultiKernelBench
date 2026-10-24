@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -10,7 +11,8 @@ import torch
 import torch_npu
 
 from backends.backend_registry import Backend, register_backend
-from config import ascendc_device, ascendc_npu_arch, op_engineer_dir
+from config import (ascendc_device, ascendc_npu_arch, ascendc_soc_version,
+                    ascendc_build_jobs, ascendc_build_type, op_engineer_dir)
 from utils.cheating_detection import detect_python_kernel_cheating
 from utils.correctness import execute_template
 from utils.performance import time_execution_event_template
@@ -164,7 +166,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(ASCEND_CANN_PACKAGE_PATH "${{ASCEND_CANN_PACKAGE_PATH}}" CACHE PATH "ASCEND CANN package installation directory")
-set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type Release/Debug (default Debug)" FORCE)
+set(CMAKE_BUILD_TYPE "{ascendc_build_type}" CACHE STRING "Build type" FORCE)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "{build_dir}")
 
 if(CMAKE_SYSTEM_PROCESSOR)
@@ -199,15 +201,15 @@ set(ASCEND_INCLUDE_DIRS
     ${{ASCEND_CANN_PACKAGE_PATH}}/compiler/ascendc/impl/aicore/basic_api
 )
 
-execute_process(COMMAND python3 -c "import os; import torch; print(os.path.dirname(torch.__file__))"
+execute_process(COMMAND "{sys.executable}" -c "import os; import torch; print(os.path.dirname(torch.__file__))"
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE TORCH_PATH
 )
-execute_process(COMMAND python3 -c "import os; import torch_npu; print(os.path.dirname(torch_npu.__file__))"
+execute_process(COMMAND "{sys.executable}" -c "import os; import torch_npu; print(os.path.dirname(torch_npu.__file__))"
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE TORCH_NPU_PATH
 )
-execute_process(COMMAND python3 -m pybind11 --includes
+execute_process(COMMAND "{sys.executable}" -m pybind11 --includes
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE PYBIND11_INC
 )
@@ -247,6 +249,7 @@ foreach(KERNEL_SRC IN LISTS KERNEL_SOURCES)
     OUTPUT ${{KERNEL_OBJ}}
     COMMAND ${{CMAKE_COMMAND}} -E make_directory ${{CMAKE_CURRENT_BINARY_DIR}}/kernels
     COMMAND ${{BISHENG}} --npu-arch={npu_arch} -xasc -std=c++17 -fPIC
+            -D_GLIBCXX_USE_CXX11_ABI={int(torch._C._GLIBCXX_USE_CXX11_ABI)}
             ${{COMMON_INCLUDE_OPTIONS}}
             -c ${{KERNEL_SRC}} -o ${{KERNEL_OBJ}}
     DEPENDS ${{KERNEL_SRC}}
@@ -279,7 +282,7 @@ target_link_libraries(pybind11_lib PRIVATE
 )
 target_compile_options(pybind11_lib PRIVATE
   ${{PYBIND11_INC}}
-  -D_GLIBCXX_USE_CXX11_ABI=1
+  -D_GLIBCXX_USE_CXX11_ABI={int(torch._C._GLIBCXX_USE_CXX11_ABI)}
 )
 target_compile_definitions(pybind11_lib PRIVATE
   TORCH_EXTENSION_NAME={module_name}
@@ -295,7 +298,7 @@ set_target_properties(pybind11_lib PROPERTIES
   BUILD_RPATH "${{TORCH_PATH}}/lib;${{TORCH_NPU_PATH}}/lib;${{ASCEND_CANN_PACKAGE_PATH}}/${{SYSTEM_PREFIX}}/lib64;${{ASCEND_CANN_PACKAGE_PATH}}/lib64"
 )
 
-execute_process(COMMAND python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so')"
+execute_process(COMMAND "{sys.executable}" -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so')"
   OUTPUT_STRIP_TRAILING_WHITESPACE
   OUTPUT_VARIABLE PYTHON_EXTENSION_SUFFIX
 )
@@ -452,11 +455,12 @@ class AscendCDirectLaunchBackend(Backend):
             str(cmake_dir),
             "-B",
             str(build_dir),
-            "-DSOC_VERSION=Ascend910B2",
+            f"-DSOC_VERSION={ascendc_soc_version}",
+            f"-DPython3_EXECUTABLE={sys.executable}",
             f"-DASCEND_CANN_PACKAGE_PATH={ascend_path}",
-            "-DCMAKE_BUILD_TYPE=Debug",
+            f"-DCMAKE_BUILD_TYPE={ascendc_build_type}",
         ]
-        build_cmd = ["cmake", "--build", str(build_dir), "-j"]
+        build_cmd = ["cmake", "--build", str(build_dir), "-j", str(ascendc_build_jobs)]
 
         _run_checked("CMake configure", configure_cmd, cwd=self.work_dir, env=env)
         _run_checked("CMake build", build_cmd, cwd=self.work_dir, env=env)

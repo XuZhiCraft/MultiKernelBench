@@ -52,6 +52,11 @@ def _compare_outputs(ref_output, new_output):
 def execute_template(synchronize, device, context):
     correctness = True
     correctness_information = ''
+    # Optional observer used by OmniKernel; numerical evaluation stays unchanged.
+    progress = context.get('_evaluation_progress')
+    if progress is not None:
+        progress.update(kind='groups' if 'get_input_groups' in context else 'trials',
+                        total=None, completed=0, compared=0, runtime_error=False)
 
     get_init_inputs = context['get_init_inputs']
     Model = context['Model']
@@ -68,7 +73,10 @@ def execute_template(synchronize, device, context):
             custom_model = ModelNew(*init_inputs).to(device)
             synchronize(device=device)
         with torch.no_grad():
-            for inputs in _get_input_trials(context):
+            input_trials = _get_input_trials(context)
+            if progress is not None and hasattr(input_trials, '__len__'):
+                progress['total'] = len(input_trials)
+            for inputs in input_trials:
                 inputs = _to_device(inputs, device)
                 synchronize(device=device)
                 ref_output = original_model(*inputs)       
@@ -76,14 +84,20 @@ def execute_template(synchronize, device, context):
                 new_output = custom_model(*inputs)
                 synchronize(device=device) # ensure all GPU operations are completed before checking results
                 feedback = _compare_outputs(ref_output, new_output)
+                if progress is not None:
+                    progress['compared'] += 1
                 if feedback is not None:
                     correctness = False
                     correctness_information = feedback
                     break
+                if progress is not None:
+                    progress['completed'] += 1
     except Exception as e:
         print('[FAIL] runtime error when evaluating correctness')
         correctness = False
         correctness_information = f"[FAIL] {str(e)}"
+        if progress is not None:
+            progress['runtime_error'] = True
         return correctness, correctness_information
 
     return correctness, correctness_information

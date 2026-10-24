@@ -1,0 +1,18 @@
+# Keep the cache and local-artifact exclusions previously inherited from OmniKernel.
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+runs/
+logs/
+build/

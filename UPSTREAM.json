@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/wzzll123/MultiKernelBench",
+  "commit": "460a972c9be7ce18035984321d38b910e27df95f",
+  "integration": "Vendored source snapshot; local compatibility changes are documented in OMNIKERNEL.md."
+}
