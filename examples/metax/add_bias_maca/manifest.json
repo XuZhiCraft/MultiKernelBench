@@ -1,0 +1,10 @@
+{
+  "entry": {"model": "ModelNew.py::ModelNew"},
+  "build": {
+    "module_name": "maca_add_bias",
+    "kernel_sources": ["kernel.cpp"],
+    "binding_sources": ["binding.cpp"],
+    "include_dirs": ["."],
+    "build_dir": "build"
+  }
+}

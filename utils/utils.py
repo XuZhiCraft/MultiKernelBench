@@ -1,11 +1,11 @@
 import os
 import config
 import re
-from openai import OpenAI
 from dataset import dataset
-import torch
 
 def get_client(model):
+    # Evaluation does not need an LLM client or its optional dependencies.
+    from openai import OpenAI
     #client 
     if model.startswith('deepseek'):
         DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY")

@@ -34,3 +34,13 @@ ascendc_npu_arch = 'dav-2201'  # used for direct launch <<<>>> kernel compilatio
 ascendc_soc_version = 'Ascend910B2'
 ascendc_build_jobs = max(1, min(os.cpu_count() or 1, 8))
 ascendc_build_type = 'Release'
+
+# MetaX native MACA C++ settings. Other backends do not consume these options.
+maca_build_jobs = max(1, min(os.cpu_count() or 1, 4))
+maca_build_type = 'Release'
+maca_build_root = os.environ.get('MULTIKERNELBENCH_MACA_BUILD_ROOT')
+maca_cxx = None
+maca_mxcc = None
+maca_extra_cflags = []
+maca_extra_mxcc_flags = []
+maca_extra_ldflags = []

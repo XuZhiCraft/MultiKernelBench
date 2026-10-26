@@ -1,6 +1,6 @@
 # MultiKernelBench
 
-A benchmark for evaluating LLMs' ability to generate kernels for various platform. Now supporting CUDA and triton kernels for GPUs, MUSA kernels for Moore Threads GPUs, Ascendc and TileLang kernels for NPUs, pallas kernels for TPUs and SYCL kernels for Intel GPUs.
+A benchmark for evaluating LLMs' ability to generate kernels for various platform. Now supporting CUDA and triton kernels for GPUs, MUSA kernels for Moore Threads GPUs, Ascendc and TileLang kernels for NPUs, pallas kernels for TPUs and SYCL kernels for Intel GPUs. This compatibility fork also supports MetaX Triton and native MACA C++ kernels.
 
 ## Directory Structure
 
@@ -101,6 +101,109 @@ python eval_single_runner.py \
 ```
 
 The runner writes one JSON object containing compile status, correctness, performance, hardware, and anti-hack detection fields.
+
+## MetaX: Triton and MACA C++
+
+Use the MetaX PyTorch and Triton wheels supplied for the installed MACA SDK.
+Do **not** install the generic pinned `torch==2.7.1` from `requirements.txt`
+over this vendor environment. The verified stack is C500, MACA 3.0.0.8,
+PyTorch 2.6.0+metax3.0.0.3 and Triton 3.0.0+metax3.0.0.3. MetaX uses
+`torch.cuda`; `torch.version.maca` can be `None` on a valid vendor installation.
+The new backends validate vendor identity without changing the existing CUDA,
+Triton, MUSA or Ascend backend registrations.
+
+Run these commands from the MultiKernelBench directory. The standalone runner
+prepares `MACA_PATH` (default `/opt/maca`) and the corresponding library paths,
+then restarts the interpreter before importing device packages. Direct Python
+API users must start their process with the matching MACA environment.
+For these two MetaX backends, the runner exits nonzero on compilation,
+correctness or timing failure and replaces any previous result with the current
+report. The existing platforms retain their original CLI exit behavior.
+
+```bash
+MACA_VISIBLE_DEVICES=0 python3 eval_single_runner.py \
+  --language triton_metax --op add_bias_broadcast \
+  --input examples/metax/add_bias_triton.py --result /tmp/mkb_triton_result.json
+
+python3 scripts/maca_project_to_json.py examples/metax/add_bias_maca \
+  --output /tmp/mkb_maca_input.json
+MACA_VISIBLE_DEVICES=0 python3 eval_single_runner.py \
+  --language maca --op add_bias_broadcast \
+  --input /tmp/mkb_maca_input.json --result /tmp/mkb_maca_result.json
+```
+
+`triton_metax` accepts a Python `ModelNew` module. JIT specialization uses real
+inputs during correctness/warmup, before timed samples; it does not set NVIDIA
+architecture flags. `maca` accepts a JSON project with `entry`, `build` and
+`sources: [{"path": "...", "content": "..."}]`. The packaging script reads an
+ordinary `manifest.json` and source files; see the complete example project.
+
+MACA device sources compile with `mxcc -x maca`; host bindings compile with the
+selected C++ compiler and PyTorch ABI. The compiler discovers host C++ headers
+and libraries instead of assuming a GCC version. `ModelNew.py` receives
+`_maca_extension` and `_maca_module_name` to load the extension. Pass
+`torch.cuda.current_stream(x.device).cuda_stream` into the native launcher;
+the example uses MACA headers and never assumes default stream zero or a CUDA
+bridge installation.
+
+`config.py` exposes `maca_cxx`, `maca_mxcc`, `maca_build_jobs`, `maca_build_type`
+and separate host/device/link flag lists. Standalone builds use unique
+directories below `$XDG_CACHE_HOME/multikernelbench/maca` or
+`~/.cache/multikernelbench/maca`; set `MULTIKERNELBENCH_MACA_BUILD_ROOT` to choose
+another root. Source files, objects and `build.log` remain available there.
+Evaluation does not require the optional OpenAI client package.
+
+The native correctness tolerances and event timing procedure are unchanged.
+Support for a backend does not make NPU-specific reference operators portable.
+The existing anti-hack checks vary by backend and are not proof that a candidate
+uses only permitted operations. For these examples, the device kernel sources
+are explicit and can be inspected.
+
+Standalone visibility selection does not reserve a card. When this checkout is
+used by OmniKernel, configure `device_pool.devices` and run through its normal
+MultiKernelBench adapter, or wrap a native command with the hardware pool:
+
+```bash
+PYTHONPATH=../src OMNIKERNEL_DEVICE_POOL=1 python3 -m omnikernel.hardware.pool run -- \
+  python3 eval_single_runner.py --language triton_metax --op add_bias_broadcast \
+  --input examples/metax/add_bias_triton.py --result /tmp/mkb_pooled_result.json
+```
+
+### Generate MetaX candidates
+
+The native generator has separate `add_shot` strategies for `triton_metax` and
+`maca`. Both read `reference/broadcast/add_bias_broadcast.py` and the matching
+tested implementation under `examples/metax/`. The MACA strategy embeds a
+complete `entry`/`build`/`sources` JSON project using the same packaging helper
+as evaluation. The original platform strategies remain unchanged.
+
+To inspect a prompt offline, without importing torch or contacting an LLM:
+
+```bash
+python3 - <<'PY'
+import importlib
+from prompt_generators.prompt_registry import PROMPT_REGISTRY
+
+language = "maca"  # or "triton_metax"
+importlib.import_module(f"prompt_generators.{language}_add_shot")
+print(PROMPT_REGISTRY[language]["add_shot"].generate("add_bias_broadcast"))
+PY
+```
+
+With the provider client and credentials configured, generate candidates with:
+
+```bash
+python3 generate_and_write.py --model deepseek-chat --language triton_metax \
+  --strategy add_shot --categories broadcast
+python3 generate_and_write.py --model deepseek-chat --language maca \
+  --strategy add_shot --categories broadcast
+```
+
+These generation commands contact the configured LLM and write candidates to
+`output/<language>/add_shot/...`. Importing the generation entry point and
+constructing MetaX prompts loads no device dependencies and needs no MACA
+environment. Evaluating the generated candidates requires the runtime described
+above.
 
 ## Adding a Prompting Strategy for a New or Existing Language
 
