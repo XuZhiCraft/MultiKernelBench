@@ -102,6 +102,31 @@ python eval_single_runner.py \
 
 The runner writes one JSON object containing compile status, correctness, performance, hardware, and anti-hack detection fields.
 
+### Collect a PyTorch Reference Baseline
+
+`generate_baseline_statistics.py` times the reference `Model` using the selected
+device backend. Use `--op` to collect one operator; omit it to collect all tasks.
+For example, on MetaX, run from the MultiKernelBench directory through the
+OmniKernel device pool:
+
+```bash
+PYTHONPATH=../src ../.venv/bin/python -m omnikernel.hardware.pool run -- \
+  ../.venv/bin/python generate_baseline_statistics.py \
+  --language triton_metax --op add_bias_broadcast \
+  --output baselines/add_bias_broadcast.json
+```
+
+The default is three warmup calls and 100 device-event timing trials, in
+milliseconds, as configured in `config.py`. Tasks with input groups time the
+first group. No candidate kernel is generated or compiled. The pool wrapper
+reserves one card for the whole command; standalone MetaX runs also prepare the
+MACA environment before importing device packages.
+
+Without `--output`, results go to `baselines/<language>_<device>.json`; single-op
+runs append `_<op>` to avoid replacing a full-benchmark file. Results are written
+once at the end. Failed and timed-out tasks retain the native `"not supported"`
+and `"timeout"` entries, and the command exits nonzero if any task fails.
+
 ## MetaX: Triton and MACA C++
 
 Use the MetaX PyTorch and Triton wheels supplied for the installed MACA SDK.

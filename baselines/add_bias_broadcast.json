@@ -1,0 +1,10 @@
+{
+  "add_bias_broadcast": {
+    "mean": 0.025,
+    "std": 0.00139,
+    "min": 0.0228,
+    "max": 0.03,
+    "num_trials": 100,
+    "device": "MetaX C500"
+  }
+}
